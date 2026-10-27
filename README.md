@@ -1,25 +1,25 @@
 # Build loop
 
-A build loop for [Claude Code](https://claude.com/claude-code). You give it a goal in plain words. It writes a spec, researches what it doesn't know, builds the change in parallel waves, checks it with your own scripts and CI, reviews it through a set of gates, fixes what failed once, and then either merges it or hands it back to you with its concerns and the evidence for each.
+A build loop for [Claude Code](https://claude.com/claude-code). You describe a change in plain words. A team of agents writes a spec, builds the change in parallel, runs your checks and CI, reviews it, and fixes what the review found. Then the loop either merges the change or gives it back to you with a list of concerns and the evidence for each.
 
-It works with any stack. On first use it reads your repo (manifests, lockfiles, CI, docs) and writes down your frameworks and their installed versions, the checks your CI runs, which commands are heavy or dangerous, and which paths must always come to a person. Every agent then works from that.
+It doesn't assume a stack. The first time, it reads your repo and writes down what it found: your frameworks and the versions you have installed, the checks your CI runs, which commands are slow or dangerous, and which files you want to review yourself whenever they change. Every agent works from that file.
 
 ## Why it exists
 
-Asking one agent to build a small change works well. Asking agents to build something that touches many files goes wrong in the same ways every time, and a longer prompt doesn't stop it. This loop is the set of rules I ended up with, and each rule is enforced by a script or a hook, because an agent can be talked out of a prompt but not out of a hook that refuses its command.
+One agent building a small change works well. When I had several agents build something that touched many files, the same problems kept coming back, and adding to the prompt didn't fix them. This loop is the set of rules I ended up with. Where I could, I enforced a rule in the workflow script or in a hook instead of the prompt. A hook runs outside the agent, so it refuses the command whatever the agent has been told since.
 
-These are the problems, and what the loop does about each:
+These are the problems, and what the loop does about each.
 
-- **Agents editing at once overwrite each other.** Every task in the spec owns its files, and only tasks with no file in common build side by side. A change a builder needs in someone else's file comes back as a follow-up, not an edit.
-- **Agents build on a guess.** They write code for the version of a framework they remember, not the one installed. Anything the repo's own docs don't settle becomes a research question, answered from the official docs for the installed version, before anyone builds on it.
-- **Screens come out generic.** A model left to its defaults produces the same cards, gradients and colour-coded badges as every other generated screen. A new screen is designed against the project's own best screen and real references, built alone, screenshotted at desktop and phone widths in every theme, and reviewed before anything builds on it.
-- **"Done" means the agent said so.** Your own checks run as scripts before any reviewer reads a line. A tests gate traces every acceptance statement in the spec to the test that proves it, and anything unproven fails.
-- **Fixers move the bar.** The quickest way to make a check pass is to loosen the test or raise a threshold. Fixers may not: a change to a test's expectation, a baseline or a budget goes to the lead as a decision.
-- **Parallel agents spend fast.** Seven builders at once can use up a usage allowance before any of them reports. The loop runs two agents at a time, gives each role the cheapest model its work allows, prepares a short reading file for each builder instead of letting it explore, stops each agent at a soft cap on tool calls, and pauses the run at a token budget. A run with the same name resumes where it stopped.
-- **Agents fight over the machine.** Two test suites, a dev server and a build at once slow everything down until commands time out, and an agent that polls with a sleep loop leaves it running after the agent is gone. Only some roles may start heavy processes, one at a time under a lock; sleep loops are refused; teardown kills whatever the run's own agents left behind, and nothing else.
-- **An agent with a shell can do damage.** The guard hook refuses pushes to protected branches, force pushes, `git stash`, `git reset --hard`, and any deploy or production command you list, to every agent in the loop. Only the approver may push or merge. Your own session is never blocked.
-- **Risky changes slip through.** Anything touching paths you mark as risky (auth, permissions, billing, data deletion), a migration that changes existing rows, an open decision, or a check that still fails, always comes back to you. The approver may add reasons to hand back but never remove one.
-- **Lessons don't stick.** Every run ends with a retro that writes one-line lessons, which the next run reads, and proposes each improvement as a check (a test of the loop, a guard rule, a setting), not as advice.
+- Agents working at the same time edited the same files and undid each other's work. Each task in the spec now owns a set of files, and two tasks only build at the same time when they share none. If a builder needs a change in a file it doesn't own, it asks for it in its result.
+- Agents wrote code for the version of a framework they remembered, not the one installed. Now anything the repo's own docs don't answer becomes a research question first, answered from the official docs for the version in your lockfile.
+- Screens built from a model's defaults looked like every other generated screen, with rows of identical cards, gradients and coloured badges. A new screen is now designed against the best existing screen in your project and a few real products. It's built on its own and screenshotted at desktop and phone widths, in light and dark. Other work builds on it only after it has been reviewed.
+- Agents reported a task done without anything checking it. Your own checks now run as scripts before any reviewer starts. The spec lists acceptance statements, which are checkable sentences that say what done means. A tests reviewer has to name the test behind each one, and a statement with no test fails the review.
+- The quickest way for a fixer to make a check pass is to loosen the test or raise a threshold. Fixers aren't allowed to. A change to a test's expectation, a baseline or a budget is reported as a decision for you instead.
+- Seven builders running at once used up a usage allowance before any of them reported back. The loop now runs two agents at a time, and each role gets the cheapest model that does its job well. Each builder starts from a short reading file instead of exploring the repo, and stops after a set number of tool calls. The whole run pauses when it reaches a token budget, and running it again with the same name picks up where it stopped.
+- Two test suites, a dev server and a build running at once slowed the machine until commands timed out. An agent that waited with a sleep loop left that loop running after the agent had finished. Now only some roles may start servers, test runs and builds, one at a time, under a lock. The guard refuses sleep loops. When a run ends, it stops anything its own agents left running. It never touches a server you started yourself.
+- An agent with a shell can push to main or throw work away. The guard hook refuses pushes to protected branches, force pushes, `git stash`, `git reset --hard`, and any deploy or production command you list, for every agent in the loop. Only the approver can push or merge. Your own Claude Code session is never blocked.
+- A risky change could be merged with nobody looking at it. Any change to files you've marked as risky, such as auth, permissions or billing, comes back to you. So does a migration that changes existing rows, a decision nobody has made, or a check that still fails. The approver can add reasons to give a change back, but it can't remove one.
+- The same mistakes came back in the next run. Each run now ends with a retro that writes one-line lessons, and the next run reads them. The retro proposes each improvement as something the loop can check: a test of the loop itself, a guard rule or a setting.
 
 ## How a run goes
 
@@ -28,70 +28,70 @@ Preflight -> Spec -> Research -> Build waves -> Checks -> CI -> Gates -> one Fix
    -> Document -> Approve (merge and check, or hand back) -> Teardown -> Retro
 ```
 
-- **Spec**: the goal becomes decisions and a task graph. Questions only you can answer (money, legal wording, deleting data, breaking an API) are listed for you, and the tasks work around them.
-- **Research**: one write-up per question, each from the kind of source its kind allows: design-reference tools or real products for design, official docs for framework conventions, web search with sources for industry practice, the vendor's own API docs for vendor behaviour.
-- **Build**: waves of tasks, two agents at a time, with a check and a commit after each wave.
-- **Checks and CI**: your own checks, then CI on a pull request if you use GitHub.
-- **Gates**: tests, UI, API compatibility, copy, security, docs, and two readiness reviewers who hold the whole feature to a written standard (who sees what, data at scale, integrity, operations, complete screens). Gates report; they never fix.
-- **Fix**: one round, grouped by file, then a recheck of only what failed. What still fails goes to you.
-- **Approve**: by default the approver never merges; it writes its verdict on the pull request. You can let it merge into an integration branch (such as `staging`) when everything passed, check the deploy, and revert its own merge if the result breaks.
-- **Audit mode** (`stages: ["audit"]`) holds the whole repo, not a diff, to the readiness standard and turns what it finds into a task graph for the next run.
+- **Spec**: an agent turns your goal into a list of decisions and a set of tasks, with the files each task owns and what it depends on. Anything only you can decide, such as pricing, legal wording, deleting data or breaking an API, is listed for you, and the tasks are planned around it.
+- **Research**: each open question gets a short write-up with its sources. Design questions are answered from design-reference tools or real products, framework questions from the official docs, questions about common practice from a web search, and questions about a third-party service from that service's own API docs. Builders read only the decision.
+- **Build**: tasks are built two agents at a time, in waves, with your checks and a commit after each wave.
+- **Checks and CI**: your own checks run first. If you use GitHub, the loop pushes the branch, opens a pull request and reads CI's results.
+- **Gates**: reviewers look at the tests, the screens, API compatibility, the wording, security and the docs. Two more check the whole feature against a readiness standard you keep in the repo. Gates report problems and never fix them.
+- **Fix**: fixers get one round, grouped by file. Then only what failed is checked again, and anything still failing comes back to you.
+- **Approve**: by default the approver never merges. It reads the diff and writes its verdict on the pull request. You can let it merge into an integration branch such as `staging` when everything has passed. It then checks the deploy, and reverts its own merge if something breaks.
+- **Audit mode** (`stages: ["audit"]`) checks the whole repo against the readiness standard, not just a diff, and turns what it finds into tasks for the next run.
 
-`.claude/skills/build-loop/reference.md` has the detail: every stage, the model each role uses, who may run what, and the files a run writes.
+The full detail, including which model each role uses and who may run what, is in `.claude/skills/build-loop/reference.md`.
 
 ## What you need
 
 - Claude Code with the Workflow tool and custom agent types (`.claude/agents`).
-- Node 18 or later and git.
-- Optional: the GitHub CLI (`gh`), signed in, for pull requests, CI and merging. Without it the loop runs your checks and tests locally and writes its verdict to a file.
-- Optional: Playwright in the repo, for screenshots of web screens. Any other project can name its own screenshot command, or skip the UI gate.
-- Optional: a design-reference tool (for example a screen search MCP server). Without one, design research uses web search and your own screens.
+- Node 18 or later, and git.
+- Optional: the GitHub CLI (`gh`), signed in, for pull requests, CI and merging. Without it the loop runs your checks and tests on your machine and writes its verdict to a file.
+- Optional: Playwright in the repo, for screenshots of web screens. Other projects can name their own screenshot command, or skip the screen review.
+- Optional: a design-reference tool, such as an MCP server that searches real product screens. Without one, design research uses web search and your own screens.
 
 ## Install
 
 ```
-git clone <this repo> build-loop
+git clone https://github.com/kylegani/build-loop
 node build-loop/install.mjs /path/to/your/repo
 ```
 
-The installer copies the skills, agent types, workflow and scripts into your repo, adds the guard hook to `.claude/settings.json`, and adds `.loop/` and `.claude/worktrees/` to `.gitignore`. It never overwrites a file that exists unless you pass `--force`, and it writes no settings for your project.
+The installer copies the skills, agent types, workflow and scripts into your repo. It adds the guard hook to `.claude/settings.json`, and `.loop/` and `.claude/worktrees/` to `.gitignore`. It won't overwrite a file that already exists unless you pass `--force`, and it doesn't write any settings for your project. Setup does that.
 
-Then open Claude Code in your repo (a new session, so it sees the new agent types) and say:
+Then open a new Claude Code session in your repo, so it picks up the new agent types, and say:
 
 > set up the build loop
 
-Setup runs `scripts/loop/detect.mjs`, reads your docs and CI, records your stack with each dependency's installed version and official docs, copies your CI checks, marks heavy and dangerous commands, finds your design docs and any design-reference tools you have, writes a readiness standard cut to your project, and asks you the few things only you can decide (your base branch, whether it may merge, which paths always come to you). It writes `.claude/workflows/loop.config.json`, with the reason for each value beside it.
+Setup reads your repo with `scripts/loop/detect.mjs`, then your docs and CI. It writes down each dependency's installed version and official docs, copies the checks your CI runs, and lists which commands are slow and which are dangerous. If your project has screens, it finds your design docs and any design-reference tools on your machine. It writes a readiness standard for your project to `docs/build-loop/readiness.md`. It asks you what only you can decide, such as your base branch, whether the loop may merge, and which files should always come to you. It saves all of this in `.claude/workflows/loop.config.json`, with a note beside each value saying where it came from.
 
 ## Run a change
 
 > run the loop: let customers export their invoices as CSV
 
-Or, step by step: make the run's worktree with `node scripts/loop/run.mjs worktree --slug invoice-export`, enter it, and start the workflow with `scriptPath: ".claude/workflows/build-loop.js"` and `args: { goal, slug, title }`. The `build-loop` skill covers the options: running the spec and research first and reading them before the build, passing your own task graph, choosing gates, and stopping a run.
+To do it step by step, make the run's worktree with `node scripts/loop/run.mjs worktree --slug invoice-export` and enter it. Then start the workflow with `scriptPath: ".claude/workflows/build-loop.js"` and `args: { goal, slug, title }`. The `build-loop` skill explains the other options, such as running only the spec first so you can read it before anything is built.
 
-A run writes its spec, state, report and cost to `docs/build-loop/runs/<slug>/`, and its research to `docs/build-loop/research/<slug>/`, on the run's branch.
+A run saves its spec, state, report and cost to `docs/build-loop/runs/<slug>/` and its research to `docs/build-loop/research/<slug>/`, on the run's branch.
 
 ## Settings
 
-Defaults are in `scripts/loop/lib/loop.defaults.json`, each with its reason. Your project's `.claude/workflows/loop.config.json` overrides any of them. The ones you are most likely to change:
+The defaults are in `scripts/loop/lib/loop.defaults.json`, each with the reason for its value. Anything you set in your project's `.claude/workflows/loop.config.json` replaces the default. These are the ones you're most likely to change:
 
 | Setting | What it does |
 | --- | --- |
 | `baseBranch` | The branch runs start from and open pull requests into |
 | `approve.mode` | `"hand-back"` (never merges) or `"merge"` |
-| `riskPaths` | Paths that always come to you, by area |
-| `checks`, `builderChecks` | Your checks, and the fast per-file ones builders run |
+| `riskPaths` | Files that always come to you, grouped by area |
+| `checks`, `builderChecks` | Your checks, and the quick ones a builder runs on its own files |
 | `heavyCommands`, `forbiddenCommands`, `protectedBranches` | What the guard limits or refuses |
-| `models`, `strongWhen` | The model each role uses, and when a role moves up |
-| `maxParallel`, `budgetTokens` | Agents at once, and the token budget per run |
+| `models`, `strongWhen` | The model each role uses, and when a role moves to a stronger one |
+| `maxParallel`, `budgetTokens` | How many agents run at once, and the token budget per run |
 | `screens`, `design` | How screenshots are taken, and where design references come from |
 
 ## Cost
 
-A run reads a lot of context. Each agent rereads its context on every turn, and a feature run uses tens of agents. The default budget is 80M tokens of context read per run; the build pauses after a wave when it is reached, and the same slug resumes. Every run writes `cost.md` with each agent's model, turns and tokens, and the preflight estimates the next run from the last three.
+A run reads tens of millions of tokens. Each agent rereads its whole context on every turn, and a feature run uses tens of agents. By default a run stops building once it has read 80M tokens. It finishes the wave it's in first, and running the same slug again carries on from there. Each run writes a `cost.md` showing every agent's model, turns and tokens, and the next run uses the last three to estimate its cost before it starts.
 
 ## One heavy process at a time
 
-The check script and screenshots take a machine-wide lock in `.loop/`, so they never run beside each other or beside another run. To make your own e2e runs wait their turn too, take the lock in your test runner's config. For Playwright:
+The check script and the screenshot script take a lock in `.loop/` that covers the whole machine, so they never run at the same time as each other or as another run. You can make your own e2e runs respect it too by taking the lock in your test runner's config. A run that finds the lock held exits and says what is holding it. For Playwright:
 
 ```ts
 import { takeHeavyLock } from './scripts/loop/lib/heavy-lock.mjs'
@@ -102,13 +102,15 @@ if (!process.env.CI && process.env.TEST_WORKER_INDEX === undefined) {
 }
 ```
 
+To wait for the lock instead of exiting, pass a wait time: `takeHeavyLock('the e2e suite', { waitMs: 8 * 60 * 1000 })`.
+
 ## Checking the loop itself
 
 ```
 node scripts/loop/self-check.mjs
 ```
 
-Every loop script must parse, the dry run must pass (the real workflow driven by stub agents, about 65 checks, no tokens), and the guard's tests must pass. Run it before and after any change to the loop.
+It checks that every loop script parses and runs the dry run, which is the real workflow with stub agents in place of Claude: 65 checks, no tokens spent. Then it runs the guard's tests. Run it before and after you change the loop.
 
 ## License
 
