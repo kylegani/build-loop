@@ -1,0 +1,14 @@
+{
+  "name": "build-loop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A build loop for Claude Code: spec, research, build in waves, check, review, fix once, then merge or hand back.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node scripts/loop/self-check.mjs"
+  }
+}
